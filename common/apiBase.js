@@ -2068,8 +2068,12 @@
 	{
 	};
 	// Download
-	baseEditorsApi.prototype.endInsertDocumentUrls              = function ()
+	baseEditorsApi.prototype.endInsertDocumentUrls               = function()
 	{
+		if (this.insertDocumentUrlsData) {
+			this.insertDocumentUrlsData.endCallback(this);
+			this.insertDocumentUrlsData = null;
+		}
 	};
 	baseEditorsApi.prototype._downloadAs                        = function ()
 	{
@@ -2207,6 +2211,31 @@
 			AscCommon.DownloadOriginalFile(this.documentId, url, "", token, function(){
 				callback(null);
 			}, callback);
+		}
+	};
+	baseEditorsApi.prototype.getConvertedXLSXFileFromUrl  = function (sUrl, sFileType, sToken, nOutputFormat, fCallback) {
+		if (this.canEdit()) {
+			const oDocument = {url: sUrl, format: sFileType, token: sToken};
+			this.insertDocumentUrlsData = {
+				imageMap: null, documents: [oDocument], convertCallback: function (_api, url) {
+					_api.insertDocumentUrlsData.imageMap = url;
+					if (url['output.xlsx']) {
+						fCallback(url['output.xlsx']);
+					} else if (url['output.xlst']) {
+						fCallback(url['output.xlst']);
+					} else {
+						fCallback(null);
+					}
+					_api.endInsertDocumentUrls();
+				}, endCallback: function (_api) {
+					fCallback(null);
+				}
+			};
+
+			const oOptions = new Asc.asc_CDownloadOptions(nOutputFormat);
+			oOptions.isNaturalDownload = true;
+			oOptions.isGetTextFromUrl = true;
+			this.downloadAs(Asc.c_oAscAsyncAction.DownloadAs, oOptions);
 		}
 	};
 	baseEditorsApi.prototype.asc_generateSmartArtPreviews = function(nTypeOfSection)

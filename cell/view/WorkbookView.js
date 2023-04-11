@@ -5320,7 +5320,7 @@
 
 						//если внешняя ссылка, то конвертируем в xlsx
 						if (sFileUrl && (isExternalLink || !isXlsx) || !t.Api["asc_isSupportFeature"]("ooxml")) {
-							t.Api._getFileFromUrl(sFileUrl, fileType, token, outputFormat,
+							t.Api.getConvertedXLSXFileFromUrl(sFileUrl, fileType, token, outputFormat,
 								function (fileUrlAfterConvert) {
 									if (fileUrlAfterConvert) {
 										successfulLoadFileMap[sFileUrl] = 1;
