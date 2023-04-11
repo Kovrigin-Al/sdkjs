@@ -648,6 +648,10 @@
 			this.setXLSX(sStream);
 			this.loadFrame();
 		}
+		else
+		{
+			this.rejectPromise();
+		}
 	};
 	CFrameDiagramBinaryLoader.prototype.rejectPromise = function ()
 	{
@@ -696,7 +700,7 @@
 	};
 	CFrameDiagramBinaryLoader.prototype.getExternalPromise = function ()
 	{
-		const oExternalDataChartManager = new CFrameDiagramExternalDataManager(this.chart);
+		const oExternalDataChartManager = new CFrameDiagramExternalDataManager(this.chart, this.api);
 		return oExternalDataChartManager.getPromise();
 	}
 	CFrameDiagramBinaryLoader.prototype.getNestedPromise = function ()
@@ -708,10 +712,11 @@
 		});
 	}
 
-	function CFrameDiagramExternalDataManager(oChart)
+	function CFrameDiagramExternalDataManager(oChart, oApi)
 	{
 		this.chart = oChart;
 		this.externalLink = this.chart.externalPath;
+		this.api = oApi;
 	}
 	CFrameDiagramExternalDataManager.prototype.isLocalDesktop = function ()
 	{
@@ -730,26 +735,30 @@
 					stream = _file["get"]();
 					_file["close"]();
 				}
-				if (stream)
-				{
-					stream = new Uint8Array(stream);
-					const nEditor = AscCommon.getEditorByBinSignature(stream);
-					if (nEditor !== AscCommon.c_oEditorId.Spreadsheet)
-					{
-						resolve(null);
-					}
-					else
-					{
-						resolve(stream);
-					}
-				}
-				else
-				{
-					resolve(null);
-				}
+			oThis.checkStreamSignatureAndCallback(stream, resolve);
 			});
 		});
 	};
+	CFrameDiagramExternalDataManager.prototype.checkStreamSignatureAndCallback = function (arrStream, callback)
+	{
+		if (arrStream)
+		{
+			arrStream = new Uint8Array(arrStream);
+			const nEditor = AscCommon.getEditorByBinSignature(arrStream);
+			if (nEditor !== AscCommon.c_oEditorId.Spreadsheet)
+			{
+				callback(null);
+			}
+			else
+			{
+				callback(arrStream);
+			}
+		}
+		else
+		{
+			callback(null);
+		}
+	}
 	CFrameDiagramExternalDataManager.prototype.getLocalFileLink = function ()
 	{
 		return this.externalLink.replace('file:\\', '');
@@ -760,8 +769,8 @@
 	};
 	CFrameDiagramExternalDataManager.prototype.isExternalLink = function ()
 	{
-		//todo
-		return false;
+		const p = /^(?:http:|https:)/;
+		return this.externalLink.match(p);
 	}
 	CFrameDiagramExternalDataManager.prototype.getPromise = function ()
 	{
@@ -771,9 +780,66 @@
 		}
 		else if (this.isExternalLink())
 		{
-
+			return this.getExternalPromise();
 		}
 	};
+	CFrameDiagramExternalDataManager.prototype.unzipStream = function (stream)
+	{
+		let binaryData = null;
+		let jsZlib = new AscCommon.ZLib();
+		if (!jsZlib.open(stream)) {
+			// todo
+		}
+
+		if (jsZlib.files && jsZlib.files.length) {
+			binaryData = jsZlib.getFile(jsZlib.files[0]);
+		}
+		return binaryData;
+	}
+	CFrameDiagramExternalDataManager.prototype.loadFileContentFromUrl = function (sFileUrl, callback)
+	{
+		const oThis = this;
+		AscCommon.loadFileContent(sFileUrl, function (httpRequest) {
+			let arrStream = null;
+			if (httpRequest) {
+				const arrStream = oThis.unzipStream(AscCommon.initStreamFromResponse(httpRequest));
+				callback(arrStream);
+			}
+			oThis.checkStreamSignatureAndCallback(arrStream, callback);
+		}, "arraybuffer");
+	}
+	CFrameDiagramExternalDataManager.prototype.isXlsx = function ()
+	{
+		const p = /^.*\.(xlsx)$/i;
+		return this.externalLink.match(p);
+	};
+	CFrameDiagramExternalDataManager.prototype.getExternalPromise = function ()
+	{
+		const oThis = this;
+			return new Promise(function (resolve)
+			{
+				let bIsXLSX = oThis.isXlsx();
+				let nOutputFormat = oThis.isSupportOOXML() ? Asc.c_oAscFileType.XLSX : Asc.c_oAscFileType.XLSY;
+				if (!bIsXLSX || !oThis.isSupportOOXML()) {
+					oThis.api.getConvertedXLSXFileFromUrl(oThis.externalLink, undefined, undefined, nOutputFormat,
+						function (sFileUrlAfterConvert) {
+						if (!sFileUrlAfterConvert)
+							return
+							oThis.loadFileContentFromUrl(sFileUrlAfterConvert, resolve);
+						});
+				}
+				else
+				{
+
+				}
+
+			});
+	}
+
+	CFrameDiagramExternalDataManager.prototype.isSupportOOXML = function ()
+	{
+		return this.api["asc_isSupportFeature"]("ooxml");
+	}
 
 	function CDiagramUpdater(oApi, oChart)
 	{
