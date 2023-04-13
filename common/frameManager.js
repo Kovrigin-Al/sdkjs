@@ -712,134 +712,203 @@
 		});
 	}
 
-	function CFrameDiagramExternalDataManager(oChart, oApi)
+	function CExternalDataLoader(arrExternalReference, oApi, fCallback)
 	{
-		this.chart = oChart;
-		this.externalLink = this.chart.externalPath;
+		this.externalReferences = arrExternalReference || [];
 		this.api = oApi;
+		this.isLocalDesktop = window["AscDesktopEditor"] && window["AscDesktopEditor"]["IsLocalFile"]();
+		this.fCallback = fCallback;
 	}
-	CFrameDiagramExternalDataManager.prototype.isLocalDesktop = function ()
+
+	CExternalDataLoader.prototype.updateExternalData = function ()
+	{
+		if (this.externalReferences)
+		{
+			if (this.isLocalDesktop)
+			{
+				this.resolveUpdateData();
+			}
+			else
+			{
+				this.api.sendEvent("asc_onUpdateExternalReference", this.externalReferences, this.resolveUpdateData.bind(this));
+			}
+		}
+	};
+
+	CExternalDataLoader.prototype.resolveUpdateData = function (arrData)
+	{
+		arrData = arrData || [];
+		const nLength = Math.max(arrData.length, this.externalReferences.length);
+		const arrPromise = [];
+		for (let i = 0; i < nLength; i += 1)
+		{
+			if (this.isLocalDesktop || (arrData[i] && (!arrData[i]["error"] || this.externalReferences[i].isExternalLink())))
+			{
+				const oPromiseGetter = new CExternalDataPromiseGetter(this.api, this.getExternalReference(i), arrData[i]);
+				arrPromise.push(oPromiseGetter.getPromise());
+			}
+		}
+		this.doUpdate(arrPromise);
+	};
+	CExternalDataLoader.prototype.doUpdate = function (arrPromise)
+	{
+		const oThis = this;
+		Promise.all(arrPromise).then(function (arrValues)
+		{
+			oThis.fCallback(arrValues);
+		});
+	}
+	CExternalDataLoader.prototype.getExternalReference = function (nId)
+	{
+		if (this.externalReferences[nId])
+		{
+			return this.externalReferences[nId].asc_getPath();
+		}
+	};
+
+	function CExternalDataPromiseGetter(oApi, sExternalReference, oData)
+	{
+		this.externalReference = sExternalReference;
+		this.data = oData;
+		this.api = oApi;
+		this.fileUrl = this.getFileUrl();
+	}
+
+	CExternalDataPromiseGetter.prototype.isLocalDesktop = function ()
 	{
 		return window["AscDesktopEditor"] && window["AscDesktopEditor"]["IsLocalFile"]();
 	}
-	CFrameDiagramExternalDataManager.prototype.getLocalFilePromise = function ()
+	CExternalDataPromiseGetter.prototype.resolveStream = function (arrStream, fResolve)
+	{
+		fResolve({stream: arrStream, externalReferenceId: this.externalReference, data: this.data});
+	}
+	CExternalDataPromiseGetter.prototype.getLocalDesktopPromise = function ()
 	{
 		const oThis = this;
 		return new Promise(function (resolve)
 		{
-			window["AscDesktopEditor"]["convertFile"](oThis.getLocalFileLink(), 0x2002, function (_file)
+			if (this.fileUrl)
 			{
-				let stream = null;
-				if (_file)
+				window["AscDesktopEditor"]["convertFile"](this.fileUrl, 0x2002, function (_file)
 				{
-					stream = _file["get"]();
-					_file["close"]();
-				}
-			oThis.checkStreamSignatureAndCallback(stream, resolve);
-			});
+					let arrStream = null;
+					if (_file)
+					{
+						arrStream = _file["get"]();
+						_file["close"]();
+					}
+					oThis.resolveStream(arrStream, resolve);
+				});
+			}
 		});
 	};
-	CFrameDiagramExternalDataManager.prototype.checkStreamSignatureAndCallback = function (arrStream, callback)
+
+	CExternalDataPromiseGetter.prototype.getLocalFileLink = function ()
 	{
-		if (arrStream)
+		let res = this.fileUrl;
+		if (res)
 		{
-			arrStream = new Uint8Array(arrStream);
-			const nEditor = AscCommon.getEditorByBinSignature(arrStream);
-			if (nEditor !== AscCommon.c_oEditorId.Spreadsheet)
+			res = res.replace(/^file:\/\/\//, '');
+			res = res.replace(/^file:\/\//, '');
+		}
+		return res;
+	};
+
+	CExternalDataPromiseGetter.prototype.isExternalLink = function ()
+	{
+		const p = /^(?:http:|https:)/;
+		return this.fileUrl.match(p);
+	};
+
+	CExternalDataPromiseGetter.prototype.getFileUrl = function ()
+	{
+		if (this.isLocalDesktop() && !this.isExternalLink())
+		{
+			return this.getLocalFileLink();
+		}
+		else if (this.data && !this.data["error"])
+		{
+			return this.data["url"];
+		}
+		return this.externalReference;
+	};
+	CExternalDataPromiseGetter.prototype.isXlsx = function ()
+	{
+		const p = /^.*\.(xlsx)$/i;
+		return this.fileUrl.match(p);
+	};
+	CExternalDataPromiseGetter.prototype.isSupportOOXML = function ()
+	{
+		return this.api["asc_isSupportFeature"]("ooxml");
+	};
+	CExternalDataPromiseGetter.prototype.getPromise = function ()
+	{
+		if (this.isLocalDesktop())
+		{
+			return this.getLocalDesktopPromise();
+		}
+		else if (!window["NATIVE_EDITOR_ENJINE"])
+		{
+			return this.getSDKPromise();
+		}
+	};
+
+	CExternalDataPromiseGetter.prototype.loadFileContentFromUrl = function (sFileUrl, resolve)
+	{
+		const oThis = this;
+		AscCommon.loadFileContent(sFileUrl, function (httpRequest)
+		{
+			let arrStream = null;
+			if (httpRequest)
 			{
-				callback(null);
+				arrStream = AscCommon.initStreamFromResponse(httpRequest);
+			}
+			oThis.resolveStream(arrStream, resolve);
+		}, "arraybuffer");
+	};
+
+	CExternalDataPromiseGetter.prototype.getSDKPromise = function ()
+	{
+		const oThis = this;
+		return new Promise(function (fResolve)
+		{
+			const bIsXLSX = oThis.isXlsx();
+			const nOutputFormat = oThis.isSupportOOXML() ? Asc.c_oAscFileType.XLSX : Asc.c_oAscFileType.XLSY;
+			const sFileUrl = oThis.getFileUrl();
+			const sFileType = oThis.data["fileType"];
+			const sToken = oThis.data["token"];
+			const sDirectUrl = oThis.data["directUrl"];
+
+			if ((sFileUrl && !bIsXLSX) || !oThis.isSupportOOXML())
+			{
+				let bLoad = false;
+				oThis.api.getConvertedXLSXFileFromUrl(sFileUrl, sFileType, sToken, nOutputFormat,
+					function (sFileUrlAfterConvert)
+					{
+						if (sFileUrlAfterConvert)
+						{
+							oThis.loadFileContentFromUrl(sFileUrlAfterConvert, fResolve);
+							bLoad = true;
+						}
+						else if (!bLoad)
+						{
+							oThis.resolveStream(null);
+						}
+					});
+			}
+			else if (sDirectUrl || sFileUrl)
+			{
+				oThis.api._downloadOriginalFile(sDirectUrl, sFileUrl, sFileType, sToken, function (arrStream)
+				{
+					oThis.resolveStream(arrStream, fResolve);
+				});
 			}
 			else
 			{
-				callback(arrStream);
+				oThis.resolveStream(null, fResolve);
 			}
-		}
-		else
-		{
-			callback(null);
-		}
-	}
-	CFrameDiagramExternalDataManager.prototype.getLocalFileLink = function ()
-	{
-		return this.externalLink.replace('file:\\', '');
+		});
 	};
-	CFrameDiagramExternalDataManager.prototype.isLocalLink = function ()
-	{
-		return this.externalLink.indexOf('file:') === 0;
-	};
-	CFrameDiagramExternalDataManager.prototype.isExternalLink = function ()
-	{
-		const p = /^(?:http:|https:)/;
-		return this.externalLink.match(p);
-	}
-	CFrameDiagramExternalDataManager.prototype.getPromise = function ()
-	{
-		if (this.isLocalDesktop() && this.isLocalLink())
-		{
-			return this.getLocalFilePromise();
-		}
-		else if (this.isExternalLink())
-		{
-			return this.getExternalPromise();
-		}
-	};
-	CFrameDiagramExternalDataManager.prototype.unzipStream = function (stream)
-	{
-		let binaryData = null;
-		let jsZlib = new AscCommon.ZLib();
-		if (!jsZlib.open(stream)) {
-			// todo
-		}
-
-		if (jsZlib.files && jsZlib.files.length) {
-			binaryData = jsZlib.getFile(jsZlib.files[0]);
-		}
-		return binaryData;
-	}
-	CFrameDiagramExternalDataManager.prototype.loadFileContentFromUrl = function (sFileUrl, callback)
-	{
-		const oThis = this;
-		AscCommon.loadFileContent(sFileUrl, function (httpRequest) {
-			let arrStream = null;
-			if (httpRequest) {
-				const arrStream = oThis.unzipStream(AscCommon.initStreamFromResponse(httpRequest));
-				callback(arrStream);
-			}
-			oThis.checkStreamSignatureAndCallback(arrStream, callback);
-		}, "arraybuffer");
-	}
-	CFrameDiagramExternalDataManager.prototype.isXlsx = function ()
-	{
-		const p = /^.*\.(xlsx)$/i;
-		return this.externalLink.match(p);
-	};
-	CFrameDiagramExternalDataManager.prototype.getExternalPromise = function ()
-	{
-		const oThis = this;
-			return new Promise(function (resolve)
-			{
-				let bIsXLSX = oThis.isXlsx();
-				let nOutputFormat = oThis.isSupportOOXML() ? Asc.c_oAscFileType.XLSX : Asc.c_oAscFileType.XLSY;
-				if (!bIsXLSX || !oThis.isSupportOOXML()) {
-					oThis.api.getConvertedXLSXFileFromUrl(oThis.externalLink, undefined, undefined, nOutputFormat,
-						function (sFileUrlAfterConvert) {
-						if (!sFileUrlAfterConvert)
-							return
-							oThis.loadFileContentFromUrl(sFileUrlAfterConvert, resolve);
-						});
-				}
-				else
-				{
-
-				}
-
-			});
-	}
-
-	CFrameDiagramExternalDataManager.prototype.isSupportOOXML = function ()
-	{
-		return this.api["asc_isSupportFeature"]("ooxml");
-	}
 
 	function CDiagramUpdater(oApi, oChart)
 	{
