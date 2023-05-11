@@ -117,7 +117,22 @@ function (window, undefined)
 	};
 	CMobileDelegateEditorCell.prototype.SetZoom = function(_value)
 	{
-		return this.Api.asc_setZoom(_value / 100);
+		// let nStartTime = (new Date()).getTime();
+		// console.log("Set Zoom");
+		// //console.log("Time: " + nStartTime);
+		// if(CMobileDelegateEditorCell.prototype.lastZoomTime) {
+		// 	console.log("Interval: " + (nStartTime - CMobileDelegateEditorCell.prototype.lastZoomTime));
+		// }
+		//
+		let oThis = this;
+		if(this.frameId) {
+			cancelAnimationFrame(this.frameId);
+		}
+		this.frameId = requestAnimationFrame(function () {oThis.Api.asc_setZoom(_value / 100); oThis.frameId = null;})
+		//let result = this.Api.asc_setZoom(_value / 100);
+		//let nEndTime = (new Date()).getTime();
+		//console.log("Duration: " + (nEndTime - nStartTime));
+		//CMobileDelegateEditorCell.prototype.lastZoomTime = nStartTime;
 	};
 	CMobileDelegateEditorCell.prototype.GetScrollerSize = function()
 	{

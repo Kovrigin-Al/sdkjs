@@ -266,7 +266,22 @@
 	};
 	CMobileDelegateEditor.prototype.SetZoom = function(_value)
 	{
-		this.HtmlPage.m_oApi.zoom(_value);
+		// const nStartTime = (new Date()).getTime();
+		// console.log("Set Zoom");
+		// if(this.lastTime)
+		// {
+		// 	console.log("Interval: " + (nStartTime - this.lastTime))
+		// }
+		// this.lastTime = nStartTime;
+		// this.HtmlPage.m_oApi.zoom(_value);
+		//
+		// console.log("Duration: " + ((new Date()).getTime() - nStartTime))
+
+		if(this.frameId) {
+			cancelAnimationFrame(this.frameId);
+		}
+		let oThis = this;
+		oThis.frameId = requestAnimationFrame(function () {oThis.HtmlPage.m_oApi.zoom(_value); oThis.frameId = null;});
 	};
 	CMobileDelegateEditor.prototype.GetObjectTrack = function(x, y, page, bSelected, bText)
 	{

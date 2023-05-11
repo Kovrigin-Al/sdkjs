@@ -1396,10 +1396,18 @@ function CEditorPage(api)
 		if (false === oThis.m_oApi.bInit_word_control)
 			return;
 
+
+		const nTime1 = (new Date()).getTime();
+		let nDiff;
+
 		this.m_nZoomType = type;
 
 		// нужно проверить режим и сбросить кеш грамотно (ie version)
 		AscCommon.g_fontManager.ClearRasterMemory();
+
+
+		const nTime2 = (new Date()).getTime();
+		console.log("Time1: " + (nTime2 - nTime1));
 
 		var oWordControl = oThis;
 
@@ -1410,38 +1418,73 @@ function CEditorPage(api)
 			dPosition = oWordControl.m_dScrollY / oWordControl.m_dScrollY_max;
 		}
 		oWordControl.CheckZoom();
+
+
+		const nTime3 = (new Date()).getTime();
+		console.log("Time2: " + (nTime3 - nTime2));
 		oWordControl.CalculateDocumentSize();
+
+		const nTime4 = (new Date()).getTime();
+		console.log("Time3: " + (nTime3 - nTime2));
 		var lCurPage = oWordControl.m_oDrawingDocument.SlideCurrent;
 
 		this.GoToPage(lCurPage, true);
+
+		const nTime5 = (new Date()).getTime();
+		console.log("Time4: " + (nTime5 - nTime4));
 		this.ZoomFreePageNum = lCurPage;
 
+		let nLast = nTime5;
 		if (-1 != lCurPage)
 		{
 			this.CreateBackgroundHorRuler();
+
+			const nTime6 = (new Date()).getTime();
+			console.log("Time5: " + (nTime6 - nTime6));
 			oWordControl.m_bIsUpdateHorRuler = true;
 			this.CreateBackgroundVerRuler();
+			const nTime7 = (new Date()).getTime();
+			console.log("Time6: " + (nTime7 - nTime6));
 			oWordControl.m_bIsUpdateVerRuler = true;
+			nLast = nTime7;
 		}
 		var lPosition = parseInt(dPosition * oWordControl.m_oScrollVerApi.getMaxScrolledY());
+		const nTime8 = (new Date()).getTime();
+		console.log("Time7: " + (nTime8 - nLast));
 		oWordControl.m_oScrollVerApi.scrollToY(lPosition);
+		const nTime9 = (new Date()).getTime();
+		console.log("Time8: " + (nTime9 - nTime8));
 
 		this.ZoomFreePageNum = -1;
 
 		oWordControl.m_oApi.sync_zoomChangeCallback(this.m_nZoomValue, type);
+		const nTime10 = (new Date()).getTime();
+		console.log("Time9: " + (nTime10 - nTime9));
 		oWordControl.m_bIsUpdateTargetNoAttack = true;
 		oWordControl.m_bIsRePaintOnScroll      = true;
 
-		oWordControl.OnScroll();
+		oWordControl.OnScroll()
+		const nTime11 = (new Date()).getTime();
+		console.log("Time10: " + (nTime11 - nTime10));
 
 		if (this.MobileTouchManager)
 			this.MobileTouchManager.Resize_After();
 
+		const nTime12 = (new Date()).getTime();
+		console.log("Time11: " + (nTime12 - nTime11));
+
 		if (this.IsSupportNotes && this.m_oNotesApi)
 			this.m_oNotesApi.OnResize();
 
+
+		const nTime13 = (new Date()).getTime();
+		console.log("Time12: " + (nTime13 - nTime12));
+
 		if (this.m_oAnimPaneApi)
 			this.m_oAnimPaneApi.OnResize();
+
+		const nTime14 = (new Date()).getTime();
+		console.log("Time13: " + (nTime14 - nTime13));
 	};
 
 	this.zoom_Out = function()
@@ -3936,6 +3979,7 @@ function CEditorPage(api)
 		if (false === oThis.m_oApi.bInit_word_control)
 			return;
 
+		console.log("OnPaint");
 		var canvas = this.m_oEditor.HtmlElement;
 		if (null == canvas)
 			return;
