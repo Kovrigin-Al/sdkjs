@@ -264,6 +264,7 @@
 
     function CDocumentResolveConflictComparison(oOriginalDocument, oRevisedDocument, oOptions) {
         CDocumentComparison.call(this, oOriginalDocument, oRevisedDocument, oOptions);
+	    this.needCopyForResolveEqualWords = false;
         this.parentParagraph = null;
         this.startPosition = 0;
         this.bSkipChangeMoveType = true;
